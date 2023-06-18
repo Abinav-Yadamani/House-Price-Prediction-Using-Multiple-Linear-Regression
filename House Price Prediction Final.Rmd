@@ -1,0 +1,438 @@
+---
+title: "KAGGLE PROJECT HOUSE PREDICTION"
+author: "Abinav Yadamani"
+date: "2023-04-16"
+output: 
+  html_document:
+    toc: true
+---
+
+### Introduction
+
+The aim of this project is to predict the house prices in Ames, Iowa with the given variables (predictors) and predict the SalePrice (Target Variable). 
+Every home buyer wants to purchase their ideal home, but it can be challenging to estimate the cost of a home as their could be many factors that needs to considered to arrive at the price. To overcome this, our Linear Regression model will estimate the price of the house using the predictor variables which are most sought to influence the sales price of a house.
+The benchmark for this model is to have r-squared above 0.85 using any number of predictors (variables).
+
+### Import and explore the datasets.
+
+```{r setup, include=TRUE, warning=FALSE,message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) #Importing the Library tidyverse.
+library(DescTools)
+library(gt)
+```
+
+Importing the train and test data in csv formats.
+
+```{r,warning=FALSE,message=FALSE}
+train <- read_csv("train.csv") # Get the Train set data.
+test <- read_csv("test.csv") # Get the Test set data.
+```
+
+Exploring the dataframe structure for the train set and test set to glance at the variables and their data types.
+
+```{r, results=FALSE}
+str(train)# To get the structure of the train dataset. 
+
+```
+> The structure above shows that the train dataset has 80 predictor variables (columns) and SalePrice (target variable) with 1460 rows. The dataset has numeric and character datatypes. Few of the "chr" columns needs to be converted to factor variables before using them in the analysis.
+
+```{r,results=FALSE}
+str(test)
+```
+
+> Here we can see that the test dataset has 1459 rows with 80 columns (predictors). The dataset has num (numeric) and chr (character) datatypes. Some chr variables are factor variables which we need to convert it to factor before using them.
+
+### Missing Values
+
+To obtain the count of the missing values in the train dataset, we have created a function "count_missings" which inturn uses the is.na() function. 
+
+```{r}
+count_missings <- function(x) sum(is.na(x))
+train %>% 
+  summarize_all(count_missings)%>%
+  gt(caption = "Table 1. Number of Missing Values for each predictor in Train dataset.") 
+sum(is.na(train))
+```
+
+> There are 6965 missing values in the train dataset. For instance, Alley has 1369 and PoolQC has 1453 missing values.
+
+Based on the data description provided at Kaggle, the missing data for the variables are imputed with either the median (for numeric type) or with the mode or None (character type). GarageYrBlt character variable has been imputed and replaced with None for the missing values.
+
+```{r}
+train <- train %>%
+  mutate(LotFrontage = replace_na (LotFrontage,median(LotFrontage, na.rm = TRUE)),
+         Alley = replace_na (Alley, replace = "None"),
+         MasVnrType = replace_na (MasVnrType, replace = "None"),
+         MasVnrArea = replace_na (MasVnrArea, replace = median(MasVnrArea, na.rm = TRUE)),
+         BsmtQual = replace_na (BsmtQual, replace = "None"),
+         BsmtCond = replace_na (BsmtCond, replace = "None"),
+         BsmtExposure = replace_na (BsmtExposure, replace = "None"),
+         BsmtFinType1 = replace_na (BsmtFinType1, replace = "None"),
+         BsmtFinType2 = replace_na (BsmtFinType2, replace = "None"),
+         Electrical = replace_na(Electrical,Mode(Electrical, na.rm = TRUE)),
+         FireplaceQu = replace_na (FireplaceQu, replace = "None"),
+         GarageType = replace_na (GarageType, replace = "None"),
+         GarageYrBlt = ntile(GarageYrBlt, 5) %>% as.character() ,GarageYrBlt = replace_na(GarageYrBlt, "none"),
+         GarageFinish = replace_na (GarageFinish, replace = "None"),
+         GarageQual = replace_na (GarageQual, replace = "None"),
+         GarageCond = replace_na (GarageCond, replace = "None"),
+         PoolQC = replace_na (PoolQC, replace = "None"),
+         Fence = replace_na(Fence, replace = "None"),
+         MiscFeature = replace_na(MiscFeature , replace = "None")
+         )
+```
+
+
+```{r}
+train %>% 
+  summarize_all(count_missings)%>%
+   gt(caption = "Table 2. Number of Missing Values for each predictor in Train dataset after cleaning.") 
+sum(is.na(train))
+```
+
+
+The above table confirms that all the missing values have been imputed and Train data is ready for developing the model.
+
+
+```{r}
+test %>% 
+  summarize_all(count_missings)%>%
+  gt(caption="Table 3. Number of Missing Values for each predictor in Test dataset.")
+```
+
+
+Now, the same Train cleaning process is followed to clean the Test dataset i.e., missing variables are imputed with either the median (for numeric type)or with the mode or None (character types).
+
+```{r}
+test <- test %>%
+  mutate(MSZoning = replace_na(MSZoning,Mode(MSZoning, na.rm = TRUE)),
+         LotFrontage = replace_na (LotFrontage,median(LotFrontage, na.rm = TRUE)),
+         Alley = replace_na (Alley, replace = "None"),
+         Utilities = replace_na(Utilities,Mode(Utilities, na.rm = TRUE)),
+         Exterior1st = replace_na(Exterior1st,Mode(Exterior1st, na.rm = TRUE)),
+         Exterior2nd = replace_na(Exterior2nd,Mode(Exterior2nd, na.rm = TRUE)),
+         MasVnrType = replace_na (MasVnrType, replace = "None"),
+         MasVnrArea = replace_na (MasVnrArea, replace = median(MasVnrArea, na.rm = TRUE)),
+         BsmtQual = replace_na (BsmtQual, replace = "None"),
+         BsmtCond = replace_na (BsmtCond, replace = "None"),
+         BsmtExposure = replace_na (BsmtExposure, replace = "None"),
+         BsmtFinType1 = replace_na (BsmtFinType1, replace = "None"),
+         BsmtFinSF1 = replace_na (BsmtFinSF1,0),
+         BsmtFinType2 = replace_na (BsmtFinType2, replace = "None"),
+         BsmtFinSF2 = replace_na (BsmtFinSF2,median(BsmtFinSF2, na.rm = TRUE)),
+         BsmtUnfSF = replace_na (BsmtUnfSF,median(BsmtUnfSF, na.rm = TRUE)),
+         TotalBsmtSF = replace_na (TotalBsmtSF,median(TotalBsmtSF, na.rm = TRUE)),
+         BsmtFullBath = replace_na (BsmtFullBath,median(BsmtFullBath, na.rm = TRUE)),
+         BsmtHalfBath = replace_na (BsmtHalfBath,median(BsmtHalfBath, na.rm = TRUE)),
+         KitchenQual = replace_na(KitchenQual,Mode(KitchenQual, na.rm = TRUE)),
+         Functional = replace_na(Functional,Mode(Functional, na.rm = TRUE)),
+         FireplaceQu = replace_na (FireplaceQu, replace = "None"),
+         GarageType = replace_na (GarageType, replace = "None"),
+         GarageYrBlt = ntile(GarageYrBlt, 5) %>% as.character() ,GarageYrBlt = replace_na(GarageYrBlt, "none"),
+         GarageFinish = replace_na (GarageFinish, replace = "None"),
+         GarageCars = replace_na(GarageCars,Mode(GarageCars, na.rm = TRUE)),
+         GarageArea = replace_na (GarageArea,median(GarageArea, na.rm = TRUE)),
+         GarageQual = replace_na (GarageQual, replace = "None"),
+         GarageCond = replace_na (GarageCond, replace = "None"),
+         PoolQC = replace_na (PoolQC, replace = "None"),
+         Fence = replace_na(Fence, replace = "None"),
+         MiscFeature = replace_na(MiscFeature , replace = "None"),
+         SaleType = replace_na(SaleType,Mode(SaleType, na.rm = TRUE))
+         )
+
+```
+
+```{r}
+test %>% 
+  summarize_all(count_missings)%>%
+  gt(caption="Table 4. Number of Missing Values for each predictor in Test dataset after cleaning.")
+sum (is.na(test))
+```
+
+The above table confirms that all the test data missing values have been imputed.
+
+### Choosing the variables
+
+For selecting the variables for developing the model, we find the Pearsons correlation matrix for numeric predictors with sales price as the target variable. This gives the relation between the target variable and the predictors.
+
+```{r}
+#Correlation function for the numeric data in the train dataset.
+corr<-cor(train[sapply(train,is.numeric)])
+tail(corr)
+
+```
+
+> The above correlation matrix shows that numeric variables such as LotArea, OverallQual, OverallCond, YearBuilt, MasVnrArea, TotalBsmtSF, 1stFlrSF, GrLivArea,FullBath and GarageArea have a strong influence (positive correlation) on the value of SalePrice.
+
+
+> 1.GrLivArea (Above ground living area square feet): 
+
+Larger homes with more living space tend to command higher prices than smaller homes with less living space and hence the GrLivArea is an excellent predictor. The correlation matrix value obtained is 0.70. Log of the variables has been taken in the scatterplot to nullify the effect of outliers.
+
+```{r}
+ggplot(train, aes(log(GrLivArea), log(SalePrice))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  labs(title = "SalePrice ~ GrLivArea, with linear regression", caption="Plot 1. Plot of log(GrLivArea) vs SalePrice")
+  
+```
+
+> 2.FullBath:
+
+As the number of bathrooms increases, the price  of the house also rises. The scatterplot between OverallQual and SalesPrice is linearly increasing indicating a positive correlation. The correlation value obtained is 0.56 from the correlation matrix.
+
+```{r}
+ggplot(train, aes((FullBath), log(SalePrice))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  labs(title = "SalePrice ~ OverallQual, with linear regression",caption="Plot 2. Plot of FullBath vs log(SalePrice)")
+```
+
+> 3.GarageArea: 
+
+In the western part of the world, it is more common that people travel through their personal vehicles. The type and luxury of the vehicle directly depends on the families affordability. With the size of the vehicle, the garage size and house price also changes accordingly. The scatterplot also shows this positive correlation.
+
+```{r}
+train %>% 
+  ggplot(aes((GarageArea), log(SalePrice))) + geom_point() + geom_smooth(method = "lm", se = F) +
+  labs(title="Garage Area vs Sales Price",caption="Plot 3. Plot of GarageArea vs log(SalePrice)")
+```
+
+> 4. Neighborhood: 
+
+The selling price of a house can be significantly impacted by its surrounding community. Homes in desirable neighborhoods with access to parks, restaurants, retail malls, excellent schools, low crime rates, and other amenities typically sell for more money than homes in less desirable areas. 
+
+Creating the summary table for the neighborhood using mean house price for every neighborhood.
+
+```{r}
+train %>%
+  group_by(Neighborhood) %>%
+  summarise(mean_average_sale_price = mean(SalePrice)) %>%
+  arrange(desc(mean_average_sale_price)) %>%
+  head(10)%>%
+  gt(caption = "Table 5. Table of Neighborhood group along with their average sale price.")
+``` 
+
+The summary table shows that NoRidge has the highest house price followed by NridgHt and StoneBr.
+
+Since, Neighborhood is a character variable, the correlation matrix cannot be used to measure the affect on Sales Price. But, we can use linear regression model to model for the Neighborhood and the target variable SalePrice.
+
+
+```{r}
+model1<- lm(SalePrice~Neighborhood,data=train)
+summary(model1)
+```
+
+We can see that R-squared value is 0.538 and hence Neighborhood is a good predictor for sales price. In general, costly neighborhoods have high quality houses. An interaction between Neighborhood and OverallQual shows a significant rise in R2.
+
+
+```{r}
+model1<- lm(SalePrice~Neighborhood*OverallQual,data=train)
+summary(model1)
+```
+
+
+Below is the plot between Neighborhood along with OverallQual and Sales price.
+
+```{r}
+ggplot(train, aes(Neighborhood, SalePrice,col=factor(OverallQual))) +
+  geom_point() +
+  labs(title = "SalePrice ~ Neighborhood",caption="Plot 4. Plot of SalePrice vs Neighborhood with overallQual")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+The plot shows that the value of Sales price of the house changes with Neighborhood. Moreover, higher overall house quality demands high house price. Thus, the sales price depends on the interaction between Neighborhood and OverallQual.
+
+
+> 5.KitchenQual: 
+
+Better the kitchen quality, higher will be the Sales price of a house. KitchenQual is a character variable and the linear model is used to verify if this predictor influences the sales price of the house.
+
+```{r}
+model2<- lm(SalePrice~KitchenQual,data=train)
+summary(model2)
+```
+
+R- squared value is 0.455 which shows that the KitchenQual is statistically significant and important variable for the model of sales price.
+
+```{r}
+train %>%
+  group_by(KitchenQual) %>%
+  summarise(mean_average_sale_price = mean(SalePrice)) %>%
+  arrange(desc(mean_average_sale_price)) %>%
+   head()%>%
+  gt(caption = "Table 6. Table of KitchenQual group along with their average sale price.")
+ 
+```
+
+
+The summary table shows that Ex(Excellent) rated kitchens has the highest average house price followed by Gd (Good) and TA (Typical/Average) and Fa (Fair) type has the lowest average sale price.
+
+
+> 6.`1stFlrSF * TotalBsmtSF:
+
+Using the `1stFlrSF` predictor to model the data to the SalesPrice:
+
+```{r}
+model1<- lm(log(SalePrice)~`1stFlrSF`,data=train)
+summary(model1)
+
+```
+
+R2 value of 0.3559 is obtained. Checking if `1stFlrSF` has direct relation with TotalBsmtSF by using interactions.
+
+```{r}
+model1<- lm(log(SalePrice)~`1stFlrSF`*TotalBsmtSF,data=train)
+summary(model1)
+
+```
+
+The R2 value has increased from 0.355 to the 0.4424. So, let's take this variables and visualize them. 
+
+```{r, warning=FALSE}
+ggplot(train, aes(log(`1stFlrSF`), log(SalePrice),color=TotalBsmtSF)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F) +
+  labs(title = "SalePrice ~ TotRmsAbvGrd, with linear regression",caption="Plot 5. Plot of SalePrice vs log(`1stFlrSF`) along with TotalBsmtSF")
+```
+
+
+> 7. BldgType
+
+A style of a house can influence its sales price. People choose different house style depending upon their personal interests such as convenience of living, privacy, outdoor space.In general, single-family detached houses sell for higher prices. We can view this by visualizing the plot between BldgType and SalePrice.
+
+
+```{r}
+ggplot(train,aes(x=BldgType,y=SalePrice)) +
+  geom_boxplot()+
+  labs(title="Plot on BldgType vs SalePrice", caption="Plot 6. Plot of Bldg vs Sales Price")
+```
+  
+> The boxplot depicts that the 1Fam(Single-family Detached) building types sell for a high price when compared to other building types. Hence, the sales prices vary with the type of the building.
+
+### Cross-Validation
+
+Cross-Validation is the method to divide the train data into two folds (mostly 70-30 split). One is train_fold and the other is validation_fold. We train the model on the train_fold and validate it on the validation_fold.
+
+```{r}
+set.seed(124)
+# Randomly sample 70% of the rows
+index <- sample(x = 1:nrow(train), size = nrow(train)*.7, replace = F)
+head(index) # These are row numbers
+```
+
+```{r}
+# Subset train using the index to create train_fold
+train_fold <- train[index, ]
+# Subset the remaining row to create validation fold.
+validation_fold <- train[-index, ]
+```
+
+> This gives a train_fold with 70% data and validation_fold with 30% data. Fitting the model with the train_fold and testing it on the validation_fold.
+
+### Linear Regression Model
+
+Developing the model using the variables or predictors described above.
+
+```{r}
+# Building the model.
+
+model<-   lm(log(SalePrice) ~ Neighborhood * OverallQual + log(GrLivArea) + TotalBsmtSF * `1stFlrSF`+ MasVnrArea  + KitchenQual + Alley + MSZoning + Utilities + LotArea + OverallCond + BldgType+YearBuilt+FullBath+GarageArea  , data = train_fold) 
+
+summary(model) # Summary of the model.
+```
+
+> R-squared value obtained is 0.902.
+
+Validating the model and calculating the RMSE and R2 for the validation fold using the developed model.
+
+```{r,warning=FALSE}
+predictions <- predict(model, newdata = validation_fold) # Predicting the model with new data.
+# Calculating the rmse.
+rmse <- function(observed, predicted) sqrt(mean((observed - predicted)^2))
+
+#Calculating the R2.
+R2 <- function(observed, predicted){
+  TSS <- sum((observed - mean(observed))^2)
+  RSS <- sum((observed - predicted)^2)
+  1- RSS/TSS
+}
+
+rmse(validation_fold$SalePrice, exp(predictions))
+R2(validation_fold$SalePrice, exp(predictions))
+
+```
+
+> The model has r-squared of 0.895 with RMSE value of 26839.81 for the validation fold, which is more than the 0.85 benchmark value. 
+
+### Submission Model to the Kaggle 
+
+Creating the submission model for the full train data using the same predictors.
+
+```{r}
+submission_model <-  lm(log(SalePrice) ~ Neighborhood * OverallQual + log(GrLivArea) + TotalBsmtSF * `1stFlrSF` + MasVnrArea  + KitchenQual + Alley + MSZoning + Utilities + LotArea + TotRmsAbvGrd+YearRemodAdd + BldgType+YearBuilt+GarageArea,data=train)
+summary(submission_model)
+
+```
+
+> R-squared value for the entire train data obtained is 0.9055.
+
+Predicting the SalePrice value for the test data using the submission model.
+
+```{r,warning=FALSE}
+submission_predictions <- predict(submission_model, newdata = test)
+```
+
+Creating a new dataframe in the required format for Kaggle to store the predicted values.
+
+```{r}
+submission <- test %>% 
+  select(Id) %>% 
+  mutate(SalePrice = exp(submission_predictions))
+```
+
+```{r}
+submission%>%
+  head(6)%>%
+  gt(caption = "Table 6. Table of submission model along with the fitted values on the test data .")
+
+```
+
+Generating the submission file.
+
+```{r}
+write.csv(submission,"submission.csv")
+```
+
+### Residual Plot
+
+Plotting the residual values from the submission model by taking the log of the SalePrice as the fitted values of SalePrice in the model are on log scale.
+
+```{r}
+train %>% 
+  mutate(fitted = fitted(submission_model),
+         residuals = log(SalePrice) - (fitted)) %>% 
+   ggplot(aes(fitted, residuals)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F, col = "red") +
+  labs(title = "residuals plot for the submission model",caption="Plot 7. Plot of Residuals vs fitted values of the model.")
+```
+
+```{r}
+train %>% 
+  mutate(fitted = fitted(submission_model),
+         residuals = log(SalePrice) - (fitted)) %>% 
+  ggplot(aes(x=residuals))+
+  geom_histogram() +
+  labs(title = "histogram for the residuals of the submission model",caption="Plot 8. Plot of histogram of Residuals vs fitted values of the model. ")
+```
+
+> The plot between the fitted values of the Sale price and residual values shows no identifiable pattern and the residual histogram is also nearly normal. This assures that the model is a good fit to the data.
+
+
+### Conclusion
+
+> In conclusion, we have taken the predictors and their interactions to predict the target variable SalePrice. We cleaned the train and test data and divided into train_fold and validation_fold with 70-30 split. We get R2 value of around 0.90 for train_fold and R2 value of .89 with rmse of 26839.81 on the validation set. This shows that the model passes the threshold R2 of.85.
+
+> Uploading the generated submission file to Kaggle will get the log RMSE score of 0.13776.
